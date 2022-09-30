@@ -61,7 +61,6 @@ def song_sorter():
     if not os.path.isdir(artists_directory):  # if Songs folder doesn't exist, create it
         os.mkdir(artists_directory)
 
-    start = time.time()
     for file in os.listdir(songs_directory):
         if '.mp3' in file:
             artist_found = 0  # set artist_found and album_found to 0 for validation when creating these folders
@@ -102,8 +101,6 @@ def song_sorter():
             else:
                 print("Song didn't have valid meta-tags.")
                 continue
-    end = time.time()
-    print(end - start, "Seconds")
 
 
 def tags_scraper_remastered(music_list, directory):
@@ -376,7 +373,6 @@ def tags_scraper_remastered(music_list, directory):
         file.tags.add(TPE1(encoding=3, text=final_result['artist']))
         if not various_artists:
             file.tags.add(TPE2(encoding=3, text=final_result['artist']))  # album artist without various artists
-            print("TESTING VARIOUS ARTISTS")
         else:
             file.tags.add(TPE2(encoding=3, text='Various Artists'))  # album artist with various artists
         file.tags.add(TRCK(encoding=3, text=str(str(final_result['track_number']) + '/'
@@ -421,7 +417,7 @@ def main():
     except Exception as err:
         print(err)
     end = time.time()
-    print(f'Total time: {end} - {start}')
+    print(f'Total time: {end - start}')
 
 
 if __name__ == '__main__':

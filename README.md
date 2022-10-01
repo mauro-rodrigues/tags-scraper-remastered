@@ -1,4 +1,4 @@
-# tags-scraper-remastered
+# Tags Scraper Remastered
 Tags Scraper Remastered allows its users to fetch a given song's tags (Artist, Title, Album, Year, Track, Album Artist, Genre, Cover Art) automatically, requiring just the artist's name and the song's name: 
 > Eminem - Beautiful
 

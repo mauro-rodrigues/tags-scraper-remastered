@@ -38,6 +38,13 @@ def get_music_list(directory):
 def clear_song_tags(audio_file, directory):
     tags = TinyTag.get(directory + '/' + audio_file)
     if tags.artist and tags.title:
+        # if song title has features with (), this removes them from the title so that the search request works properly
+        if '(feat.' in tags.title:
+            tags.title = tags.title.split('(')[0].strip()
+        # in case Deezer's database has the features for a song without ()
+        elif 'feat.' in tags.title:
+            tags.title = tags.title.split('feat.')[0].strip()
+        # rename the .mp3 file for the search request
         os.rename(directory + '/' + audio_file,
                   directory + '/' + tags.artist + ' - ' + tags.title + '.mp3')
         audio_file = f"{tags.artist} - {tags.title}.mp3"
@@ -138,7 +145,6 @@ def print_results_and_pick_one(results, automated):
         else:
             break
 
-    automated_singles = True
     if automated:
         if number_results > 1:
             if results[0]['title'] == results[0]['album_title']:

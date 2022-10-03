@@ -158,16 +158,19 @@ def print_results_and_pick_one(results, automated):
 
     elif not automated:
         if number_results > 1:  # if there are multiple results, let the user pick one
-            while user_choice <= 0 or user_choice > total_songs_for_user_choice:
-                user_choice = int(input(f"Which version? [1-{total_songs_for_user_choice}]: "))
-                if user_choice <= 0 or user_choice > total_songs_for_user_choice:
-                    print("Invalid choice, try again.")
-                else:
-                    final_result = results[user_choice - 1]
+            while True:
+                try:
+                    user_choice = int(input(f"Which version? [1-{total_songs_for_user_choice}]: "))
+                    if user_choice <= 0 or user_choice > total_songs_for_user_choice:
+                        print("Invalid choice, try again.")
+                    else:
+                        final_result = results[user_choice - 1]
+                        break
+                except ValueError:
+                    print(f"Invalid choice, please input a valid number between {1}-{total_songs_for_user_choice}.")
         elif number_results == 1:  # if there's just one result, use it
             final_result = results[0]
-
-    if final_result['artist'] == 'Ghostemane':  # ghostemane is written capitalized in the deezer db
+    if final_result['artist'] == 'Ghostemane':  # ghostemane is capitalized in deezer's db, I prefer it this way
         final_result['artist'] = 'GHOSTEMANE'
 
     return final_result
@@ -254,7 +257,7 @@ def get_album_information(data, automated, title_for_check, final_result):
             while True:
                 various_artists = input("Do you want to put Album Artist as Various Artists? (Yes = 1 / No = 0): ")
                 if various_artists != "1" and various_artists != "0":
-                    print("Please input a valid option (1 or 0).")
+                    print("Please input a valid option (Yes = 1 / No = 0).")
                 else:
                     various_artists = int(various_artists)
                     break
@@ -555,7 +558,7 @@ def main():
     directory = os.getcwd()
 
     # the automation tries to avoid singles, but for songs that are just singles, the album selection is a bit poor
-    automated = True  # automates the process and if various artists are detected, it will apply it to the album artist
+    automated = False  # automates the process and if various artists are detected, it will apply it to the album artist
     sorting = True  # to sort the songs after tags scraper is finished
     headers = {"Accept-Language": "en-US,en;q=0.5"}  # set the headers to english because of the music genres
 

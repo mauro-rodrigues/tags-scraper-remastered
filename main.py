@@ -42,7 +42,7 @@ def clear_song_tags(audio_file, directory):
         if '(feat.' in tags.title:
             tags.title = tags.title.split('(')[0].strip()
         # in case Deezer's database has the features for a song without ()
-        elif 'feat.' in tags.title:
+        if 'feat.' in tags.title:
             tags.title = tags.title.split('feat.')[0].strip()
         # rename the .mp3 file for the search request
         os.rename(directory + '/' + audio_file,
@@ -558,7 +558,7 @@ def main():
     directory = os.getcwd()
 
     # the automation tries to avoid singles, but for songs that are just singles, the album selection is a bit poor
-    automated = False  # automates the process and if various artists are detected, it will apply it to the album artist
+    automated = True  # automates the process and if various artists are detected, it will apply it to the album artist
     sorting = True  # to sort the songs after tags scraper is finished
     headers = {"Accept-Language": "en-US,en;q=0.5"}  # set the headers to english because of the music genres
 

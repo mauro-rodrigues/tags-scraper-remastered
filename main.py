@@ -26,8 +26,7 @@ import unicodedata
 def album_folder_creator(current_directory, album, file, songs_directory):
     current_directory = current_directory + '/' + album  # changes current directory to the album name
     os.mkdir(current_directory)  # creates the album folder
-    os.chdir(current_directory)  # changes into the album folder
-    shutil.copy(songs_directory + '/' + file, current_directory)  # copies the song into the album folder
+    return current_directory
 
 
 def cover_image_fetcher(album_cover_url, album_tag):
@@ -81,28 +80,31 @@ def song_sorter():
                     if artist_folder.lower() == artist.lower():  # if there is a corresponding artist name to a folder
                         artist_found = 1  # changes this value to 1 so that it will not try to create another folder
                         current_directory = artists_directory + '/' + artist_folder
-                        os.chdir(current_directory)  # changes into the current artist folder
                         for album_folder in os.listdir(current_directory):  # tries to read any existing album folders
                             if album_folder.lower() == (album + " " + "(" + year[0:4] + ")").lower():
                                 album_found = 1  # sets this value to 1 so that it will not create another folder
                                 album += " " + "(" + year[0:4] + ")"
                                 current_directory = current_directory + '/' + album
-                                os.chdir(current_directory)
-                                shutil.copy(songs_directory + '/' +
-                                            file, current_directory)
-                                songs_copied += 1
+                                # only copies the song if it does not yet exist
+                                if current_directory + '/' + file:
+                                    shutil.copy(songs_directory + '/' + file, current_directory)
+                                    songs_copied += 1
+                                else:
+                                    print(f"Song ({file}) already exists in target directory {current_directory}.")
                         if album_found == 0:  # if it wasn't found it will create it
                             album += " " + "(" + year[0:4] + ")"
-                            album_folder_creator(
-                                current_directory, album, file, songs_directory)
+                            current_directory = album_folder_creator(current_directory, album, file, songs_directory)
+                            shutil.copy(songs_directory + '/' + file,
+                                        current_directory)  # copies the song into the album folder
                             songs_copied += 1
                 if artist_found == 0:  # if the artist wasn't found it will create its folder and the album folder
                     current_directory = artists_directory + '/' + artist
                     os.mkdir(current_directory)
-                    os.chdir(current_directory)
                     album += " " + "(" + year[0:4] + ")"
-                    album_folder_creator(
+                    current_directory = album_folder_creator(
                         current_directory, album, file, songs_directory)
+                    shutil.copy(songs_directory + '/' + file,
+                                current_directory)  # copies the song into the album folder
                     songs_copied += 1
             else:
                 print(f"Song ({file}) didn't have valid meta-tags.")
@@ -110,6 +112,20 @@ def song_sorter():
 
     print(f'Song sorter finished, copied {songs_copied} out of {total_songs} files.') if total_songs != 1 \
         else print(f'Song sorter finished, copied {songs_copied} out of {total_songs} file.')
+
+
+def clear_song_tags(audio_file, directory):
+    tags = TinyTag.get(directory + '/' + audio_file)
+    if tags.artist and tags.title:
+        print(f'{tags.artist} - {tags.title}')
+        os.rename(directory + '/' + audio_file,
+                  directory + '/' + tags.artist + ' - ' + tags.title + '.mp3')
+        audio_file = f"{tags.artist} - {tags.title}.mp3"
+    file = MP3(directory + '/' + audio_file, ID3=ID3)  # open the file to change its tags
+    file.clear()
+    file.save(v2_version=3)  # save the tags
+
+    return audio_file
 
 
 def sanitise_user_input(audio_file):
@@ -138,35 +154,42 @@ def sanitise_user_input(audio_file):
         'NFKD', title_for_url).encode('ASCII', 'ignore').decode()
     print(title_for_url, " trying to get data")
 
-    return [artist_for_url, title_for_url, artist_for_check, title_for_check, audio]
+    return artist_for_url, title_for_url, artist_for_check, title_for_check, audio
 
 
 def get_results(data, artist_for_check, title_for_check):
     results = []
     current_result = {}
-    for n, result in enumerate(data):  # for index and result in the data we just requested
-        if artist_for_check.upper() in result['artist']['name'].upper() \
-                and title_for_check.upper() in result['title'].upper() \
-                and 'acoustic' not in result['title'].lower() \
-                and 'live' not in result['title'].lower() \
-                and 'bonus' not in result['title'].lower():  # checks for artist, title and filters unwanted results
-            current_result['id'] = result['id']  # song id
-            current_result['artist'] = result['artist']['name']  # artist name
-            current_result['title'] = result['title']  # song name
-            current_result['album_title'] = result['album']['title']  # album name
-            current_result['cover_url_medium'] = result['album']['cover_medium']  # cover 250x250
-            current_result['cover_url_big'] = result['album']['cover_big']  # cover 500x500
-            current_result['cover_url_xl'] = result['album']['cover_xl']  # cover 1000x1000
-            current_result['album_id'] = result['album']['id']  # album id
-            current_result['title_contributors'] = ''  # creates this to add to at a later time
-            results.append(current_result)  # adds all the results to a list so that we can choose the one we want
-            current_result = {}
+    if data:
+        for n, result in enumerate(data):  # for index and result in the data we just requested
+            if artist_for_check.upper() in result['artist']['name'].upper() \
+                    and title_for_check.upper() in result['title'].upper() \
+                    and 'acoustic' not in result['title'].lower() \
+                    and 'live' not in result['title'].lower() \
+                    and 'bonus' not in result['title'].lower():  # checks for artist, title and filters unwanted results
+                current_result['id'] = result['id']  # song id
+                current_result['artist'] = result['artist']['name']  # artist name
+                current_result['title'] = result['title']  # song name
+                current_result['album_title'] = result['album']['title']  # album name
+                current_result['cover_url_medium'] = result['album']['cover_medium']  # cover 250x250
+                current_result['cover_url_big'] = result['album']['cover_big']  # cover 500x500
+                current_result['cover_url_xl'] = result['album']['cover_xl']  # cover 1000x1000
+                current_result['album_id'] = result['album']['id']  # album id
+                current_result['title_contributors'] = ''  # creates this to add to at a later time
+                results.append(current_result)  # adds all the results to a list so that we can choose the one we want
+                current_result = {}
 
     return results
 
 
 def print_results_and_pick_one(results, automated):
-    number_results = len(results)  # calculates the number of results for later
+    # calculates the number of results for later
+    number_results = len(results)
+
+    # if there are no results, return an empy dictionary
+    if not number_results:
+        return {}
+
     user_choice = 0  # setting user_choice to 0 so that we can then change it to whatever the user chooses
     total_songs_for_user_choice = 0
     final_result = {}
@@ -178,6 +201,7 @@ def print_results_and_pick_one(results, automated):
         else:
             break
 
+    automated_singles = True
     if automated:
         if number_results > 1:
             if results[0]['title'] == results[0]['album_title']:
@@ -188,8 +212,6 @@ def print_results_and_pick_one(results, automated):
                 final_result = results[0]
         elif number_results == 1:
             final_result = results[0]
-        else:
-            print("There were no records found.")
 
     elif not automated:
         if number_results > 1:  # if there are multiple results, let the user pick one
@@ -199,16 +221,13 @@ def print_results_and_pick_one(results, automated):
                     print("Invalid choice, try again.")
                 else:
                     final_result = results[user_choice - 1]
-        elif number_results == 1:  # if not just use the one we got
+        elif number_results == 1:  # if there's just one result, use it
             final_result = results[0]
-        else:
-            print("There were no results found.")
 
-    if final_result:
-        if final_result['artist'] == 'Ghostemane':  # ghostemane is written capitalized in the deezer db
-            final_result['artist'] = 'GHOSTEMANE'
+    if final_result['artist'] == 'Ghostemane':  # ghostemane is written capitalized in the deezer db
+        final_result['artist'] = 'GHOSTEMANE'
 
-    return final_result if final_result else {}
+    return final_result
 
 
 def get_artists(data, audio, final_result):
@@ -315,8 +334,8 @@ def get_album_information(data, automated, title_for_check, final_result):
     elif length_genres == 1:  # if it only has one genre use it
         genres_for_tag = genres[0]
 
-    return [track_count, album_genres, release_date, various_artists, genres, genres_for_tag,
-            final_feat_album_tag, final_result]
+    return (track_count, album_genres, release_date, various_artists, genres, genres_for_tag,
+            final_feat_album_tag, final_result)
 
 
 def sanitise_album_tag(final_result, directory):
@@ -405,15 +424,13 @@ def edit_mp3_file(directory, audio_file, pic_file, final_result, final_feat_albu
         track_number_for_name = str(final_result['track_number'])
     file.save(v2_version=3)  # save the tags
     if final_result['title_contributors']:  # check if there were featured artists to update the success message
-        print('Success!', final_result['artist'], " - ", final_result['title_contributors'])
         os.rename(directory + '/' + audio_file,
                   directory + '/' + track_number_for_name + ' ' + final_result['title_contributors'] + '.mp3')
+        print('Success!', final_result['artist'], " - ", final_result['title_contributors'])
     else:
-        print('Success!', final_result['artist'], " - ", final_result['title'])
         os.rename(directory + '/' + audio_file,
                   directory + '/' + track_number_for_name + ' ' + final_result['title'] + '.mp3')
-
-    return 'Success editing {file}!'
+        print('Success!', final_result['artist'], " - ", final_result['title'])
 
 
 def tags_scraper_remastered(music_list, directory, automated, headers):
@@ -425,19 +442,21 @@ def tags_scraper_remastered(music_list, directory, automated, headers):
         # sanitise user input
         artist_for_url, title_for_url, artist_for_check, title_for_check, audio = sanitise_user_input(audio_file)
 
-        # search for pretended song
+        # search for song
         response_search = requests.request("GET", f"https://api.deezer.com/search?q={artist_for_url}-{title_for_url}",
                                            headers=headers)  # seems like the most efficient way to get exact matches
         parse_json = json.loads(response_search.text)
 
-        # append the results into a list
+        # get the results and append them into a list
         results = get_results(parse_json['data'], artist_for_check, title_for_check)
+
+        if not results:
+            print(f"({artist_for_check} - {title_for_check}) isn't available yet in Deezer's database.")
+            print("Check for any spelling errors and if the right syntax is being used.")
+            continue
 
         # print the results and pick one, either via automation or user choice
         final_result = print_results_and_pick_one(results, automated)
-
-        if not final_result:
-            continue
 
         # requests the track data to check the artists (contributors in Deezer's API)
         response_track = requests.request("GET", f"https://api.deezer.com/track/{final_result['id']}",
@@ -465,13 +484,13 @@ def tags_scraper_remastered(music_list, directory, automated, headers):
         # edit the .mp3 file
         edit_mp3_file(directory, audio_file, pic_file, final_result, final_feat_album_tag, various_artists,
                       release_date, genres_for_tag)
+        files_edited += 1
 
         # 2s timeout to prevent flooding the api with requests
-        files_edited += 1
         time.sleep(2)
 
-    print(f'Tags scraper finished, edited {files_edited} out of {total_files} files.') if total_files != 1 \
-        else print(f'Tags scraper finished, edited {files_edited} out of {total_files} file.')
+    print(f'Tags Scraper finished, edited {files_edited} out of {total_files} files.') if total_files != 1 \
+        else print(f'Tags Scraper finished, edited {files_edited} out of {total_files} file.')
 
 
 def main():
@@ -479,9 +498,9 @@ def main():
     directory = os.getcwd()
     music_list = []
 
-    # automation and headers
-    automated = True  # automates the process and if various artists are detected, it will apply it to the album artist
-    headers = {"Accept-Language": "en-US,en;q=0.5"}  # set these headers to english because of the music genres
+    # the automation tries to avoid singles, but for songs that are just singles, the album selection is a bit poor
+    automated = False  # automates the process and if various artists are detected, it will apply it to the album artist
+    headers = {"Accept-Language": "en-US,en;q=0.5"}  # set the headers to english because of the music genres
 
     # time counter
     start = time.time()
@@ -489,7 +508,9 @@ def main():
     # get every song and append them to music_list
     for item in os.listdir(directory):
         if '.mp3' in item:
-            music_list.append(item)
+            # clear tags
+            item_cleared = clear_song_tags(item, directory)
+            music_list.append(item_cleared)
 
     if music_list:
         tags_scraper_remastered(music_list, directory, automated, headers)

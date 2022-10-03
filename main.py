@@ -12,7 +12,7 @@ from mutagen.id3 import ID3, APIC, TIT2, TPE1, TRCK, TALB, TYER, TCON, TPE2, TPA
 import unicodedata
 
 
-# ID3 info:
+# ID3 Tags Information:
 # APIC: Cover Art
 # TIT2: Title
 # TPE1: Artist
@@ -23,101 +23,21 @@ import unicodedata
 # TPA: Disc Number
 
 
-def album_folder_creator(current_directory, album, file, songs_directory):
-    current_directory = current_directory + '/' + album  # changes current directory to the album name
-    os.mkdir(current_directory)  # creates the album folder
-    return current_directory
+def get_music_list(directory):
+    music_list = []
 
+    for item in os.listdir(directory):
+        if '.mp3' in item:
+            # clear tags
+            item_cleared = clear_song_tags(item, directory)
+            music_list.append(item_cleared)
 
-def cover_image_fetcher(album_cover_url, album_tag):
-    image_url = album_cover_url
-    data_image = requests.get(image_url, stream=True)
-    album_tag_filtered = album_tag.replace(':', ' -')  # replacing special characters and instances
-    album_tag_filtered = album_tag_filtered.replace('(', '-').replace(')', '') \
-        .replace('[', '-').replace(']', '') \
-        .replace('\'', '').replace(' ', '').lower()
-    if '?' in album_tag_filtered:
-        album_tag_filtered = album_tag_filtered.replace('?', '')
-    local_file = open(f'{album_tag_filtered}.jpg', 'wb')
-    data_image.raw.decode_content = True
-    shutil.copyfileobj(data_image.raw, local_file)
-    del data_image
-
-    return local_file if local_file else f'{album_tag_filtered} not found.'
-
-
-def song_sorter():
-    # set directories for songs to sort and where to put them
-    songs_directory = os.getcwd()
-    artists_directory = os.getcwd() + '/' + 'Songs'
-
-    # characters to filter for file/folder names
-    special_characters = ['/', '*', '?', '<', '>', '|']
-
-    # if Songs folder doesn't exist, create it
-    if not os.path.isdir(artists_directory):
-        os.mkdir(artists_directory)
-
-    # songs copied and total_songs counters
-    songs_copied = 0
-    total_songs = 0
-
-    for file in os.listdir(songs_directory):
-        if '.mp3' in file:
-            total_songs += 1
-            artist_found = 0  # set artist_found and album_found to 0 for validation when creating these folders
-            album_found = 0  # if they were already created, these values will change to 1
-            tags = TinyTag.get(songs_directory + '/' + file)
-            if tags.album is not None and tags.albumartist is not None:  # if the song read has valid tags
-                artist = tags.albumartist
-                album = tags.album
-                album = album.replace(':', ' -')
-                for character in special_characters:
-                    if character in album:
-                        album = album.replace(character, '')
-                year = tags.year
-                for artist_folder in os.listdir(artists_directory):
-                    if artist_folder.lower() == artist.lower():  # if there is a corresponding artist name to a folder
-                        artist_found = 1  # changes this value to 1 so that it will not try to create another folder
-                        current_directory = artists_directory + '/' + artist_folder
-                        for album_folder in os.listdir(current_directory):  # tries to read any existing album folders
-                            if album_folder.lower() == (album + " " + "(" + year[0:4] + ")").lower():
-                                album_found = 1  # sets this value to 1 so that it will not create another folder
-                                album += " " + "(" + year[0:4] + ")"
-                                current_directory = current_directory + '/' + album
-                                # only copies the song if it does not yet exist
-                                if current_directory + '/' + file:
-                                    shutil.copy(songs_directory + '/' + file, current_directory)
-                                    songs_copied += 1
-                                else:
-                                    print(f"Song ({file}) already exists in target directory {current_directory}.")
-                        if album_found == 0:  # if it wasn't found it will create it
-                            album += " " + "(" + year[0:4] + ")"
-                            current_directory = album_folder_creator(current_directory, album, file, songs_directory)
-                            shutil.copy(songs_directory + '/' + file,
-                                        current_directory)  # copies the song into the album folder
-                            songs_copied += 1
-                if artist_found == 0:  # if the artist wasn't found it will create its folder and the album folder
-                    current_directory = artists_directory + '/' + artist
-                    os.mkdir(current_directory)
-                    album += " " + "(" + year[0:4] + ")"
-                    current_directory = album_folder_creator(
-                        current_directory, album, file, songs_directory)
-                    shutil.copy(songs_directory + '/' + file,
-                                current_directory)  # copies the song into the album folder
-                    songs_copied += 1
-            else:
-                print(f"Song ({file}) didn't have valid meta-tags.")
-                continue
-
-    print(f'Song sorter finished, copied {songs_copied} out of {total_songs} files.') if total_songs != 1 \
-        else print(f'Song sorter finished, copied {songs_copied} out of {total_songs} file.')
+    return music_list
 
 
 def clear_song_tags(audio_file, directory):
     tags = TinyTag.get(directory + '/' + audio_file)
     if tags.artist and tags.title:
-        print(f'{tags.artist} - {tags.title}')
         os.rename(directory + '/' + audio_file,
                   directory + '/' + tags.artist + ' - ' + tags.title + '.mp3')
         audio_file = f"{tags.artist} - {tags.title}.mp3"
@@ -157,6 +77,18 @@ def sanitise_user_input(audio_file):
     return artist_for_url, title_for_url, artist_for_check, title_for_check, audio
 
 
+def search_request(artist_for_url, title_for_url, headers):
+    response_search = requests.request("GET", f"https://api.deezer.com/search?q={artist_for_url}-{title_for_url}",
+                                       headers=headers)  # seems like the most efficient way to get exact matches
+    if response_search.status_code != 200:
+        print("Something went wrong. Please check the API and try again.")
+        return {}
+
+    parse_json_search = json.loads(response_search.text)
+
+    return parse_json_search
+
+
 def get_results(data, artist_for_check, title_for_check):
     results = []
     current_result = {}
@@ -180,6 +112,11 @@ def get_results(data, artist_for_check, title_for_check):
                 current_result = {}
 
     return results
+
+
+def print_search_error(artist_for_check, title_for_check):
+    print(f"({artist_for_check} - {title_for_check}) isn't available yet in Deezer's database.")
+    print("Check for any spelling errors and if the right syntax is being used.")
 
 
 def print_results_and_pick_one(results, automated):
@@ -230,6 +167,18 @@ def print_results_and_pick_one(results, automated):
     return final_result
 
 
+def track_request(final_result, headers):
+    response_track = requests.request("GET", f"https://api.deezer.com/track/{final_result['id']}",
+                                      headers=headers)
+    if response_track.status_code != 200:
+        print("Something went wrong. Please check the API and try again.")
+        return {}
+
+    parse_json_track = json.loads(response_track.text)
+
+    return parse_json_track
+
+
 def get_artists(data, audio, final_result):
     track_contributors = []
     for contributor in data:
@@ -264,6 +213,18 @@ def get_artists(data, audio, final_result):
     print("FINAL RESULT TITLE CONTRIBUTORS: ", final_result['title_contributors'])
 
     return final_result
+
+
+def album_request(final_result, headers):
+    response_album = requests.request("GET", f"https://api.deezer.com/album/{final_result['album_id']}",
+                                      headers=headers)
+    if response_album.status_code != 200:
+        print("Something went wrong. Please check the API and try again.")
+        return {}
+
+    parse_json_album = json.loads(response_album.text)
+
+    return parse_json_album
 
 
 def get_album_information(data, automated, title_for_check, final_result):
@@ -367,6 +328,23 @@ def sanitise_album_tag(final_result, directory):
     return pic_file
 
 
+def cover_image_fetcher(album_cover_url, album_tag):
+    image_url = album_cover_url
+    data_image = requests.get(image_url, stream=True)
+    album_tag_filtered = album_tag.replace(':', ' -')  # replacing special characters and instances
+    album_tag_filtered = album_tag_filtered.replace('(', '-').replace(')', '') \
+        .replace('[', '-').replace(']', '') \
+        .replace('\'', '').replace(' ', '').lower()
+    if '?' in album_tag_filtered:
+        album_tag_filtered = album_tag_filtered.replace('?', '')
+    local_file = open(f'{album_tag_filtered}.jpg', 'wb')
+    data_image.raw.decode_content = True
+    shutil.copyfileobj(data_image.raw, local_file)
+    del data_image
+
+    return local_file if local_file else f'{album_tag_filtered} not found.'
+
+
 def print_final_data(final_result, various_artists, genres, genres_for_tag, release_date):
     print("ALBUM_ID: ", final_result['album_id'])
     print("TRACK_ID: ", final_result['id'])
@@ -433,6 +411,84 @@ def edit_mp3_file(directory, audio_file, pic_file, final_result, final_feat_albu
         print('Success!', final_result['artist'], " - ", final_result['title'])
 
 
+def album_folder_creator(current_directory, album):
+    current_directory = current_directory + '/' + album  # changes current directory to the album name
+    os.mkdir(current_directory)  # creates the album folder
+    return current_directory
+
+
+def song_sorter():
+    # set directories for songs to sort and where to put them
+    songs_directory = os.getcwd()
+    artists_directory = os.getcwd() + '/' + 'Songs'
+
+    # characters to filter for file/folder names
+    special_characters = ['/', '*', '?', '<', '>', '|']
+
+    # if Songs folder doesn't exist, create it
+    if not os.path.isdir(artists_directory):
+        os.mkdir(artists_directory)
+
+    # songs copied and total_songs counters
+    songs_copied = 0
+    total_songs = 0
+
+    try:
+        for file in os.listdir(songs_directory):
+            if '.mp3' in file:
+                total_songs += 1
+                artist_found = 0  # set artist_found and album_found to 0 for validation when creating these folders
+                album_found = 0  # if they were already created, these values will change to 1
+                tags = TinyTag.get(songs_directory + '/' + file)
+                if tags.album is not None and tags.albumartist is not None:  # if the song read has valid tags
+                    artist = tags.albumartist
+                    album = tags.album
+                    album = album.replace(':', ' -')
+                    for character in special_characters:
+                        if character in album:
+                            album = album.replace(character, '')
+                    year = tags.year
+                    for artist_folder in os.listdir(artists_directory):
+                        if artist_folder.lower() == artist.lower():  # if there is a corresponding artist name folder
+                            artist_found = 1  # changes this value to 1 so that it will not try to create another folder
+                            current_directory = artists_directory + '/' + artist_folder
+                            for album_folder in os.listdir(current_directory):  # tries to read existing album folders
+                                if album_folder.lower() == (album + " " + "(" + year[0:4] + ")").lower():
+                                    album_found = 1  # sets this value to 1 so that it will not create another folder
+                                    album += " " + "(" + year[0:4] + ")"
+                                    current_directory = current_directory + '/' + album
+                                    # only copies the song if it does not yet exist
+                                    if current_directory + '/' + file:
+                                        shutil.copy(songs_directory + '/' + file, current_directory)
+                                        songs_copied += 1
+                                    else:
+                                        print(f"Song ({file}) already exists in target directory {current_directory}.")
+                            if album_found == 0:  # if it wasn't found it will create it
+                                album += " " + "(" + year[0:4] + ")"
+                                current_directory = album_folder_creator(current_directory, album)
+                                shutil.copy(songs_directory + '/' + file,
+                                            current_directory)  # copies the song into the album folder
+                                songs_copied += 1
+                    if artist_found == 0:  # if the artist wasn't found it will create its folder and the album folder
+                        current_directory = artists_directory + '/' + artist
+                        os.mkdir(current_directory)
+                        album += " " + "(" + year[0:4] + ")"
+                        current_directory = album_folder_creator(
+                            current_directory, album)
+                        shutil.copy(songs_directory + '/' + file,
+                                    current_directory)  # copies the song into the album folder
+                        songs_copied += 1
+                else:
+                    print(f"Song ({file}) didn't have valid meta-tags.")
+                    continue
+
+        print(f'Song sorter finished, copied {songs_copied} out of {total_songs} files.') if total_songs != 1 \
+            else print(f'Song sorter finished, copied {songs_copied} out of {total_songs} file.')
+    # if it runs into an error, I just want to know what caused it, so this Exception doesn't require specificity
+    except Exception as err:
+        print(err)
+
+
 def tags_scraper_remastered(music_list, directory, automated, headers):
     # counter for total files and files edited
     files_edited = 0
@@ -443,33 +499,26 @@ def tags_scraper_remastered(music_list, directory, automated, headers):
         artist_for_url, title_for_url, artist_for_check, title_for_check, audio = sanitise_user_input(audio_file)
 
         # search for song
-        response_search = requests.request("GET", f"https://api.deezer.com/search?q={artist_for_url}-{title_for_url}",
-                                           headers=headers)  # seems like the most efficient way to get exact matches
-        parse_json = json.loads(response_search.text)
+        parse_json_search = search_request(artist_for_url, title_for_url, headers)
 
         # get the results and append them into a list
-        results = get_results(parse_json['data'], artist_for_check, title_for_check)
+        results = get_results(parse_json_search['data'], artist_for_check, title_for_check)
 
         if not results:
-            print(f"({artist_for_check} - {title_for_check}) isn't available yet in Deezer's database.")
-            print("Check for any spelling errors and if the right syntax is being used.")
+            print_search_error(artist_for_check, title_for_check)
             continue
 
         # print the results and pick one, either via automation or user choice
         final_result = print_results_and_pick_one(results, automated)
 
         # requests the track data to check the artists (contributors in Deezer's API)
-        response_track = requests.request("GET", f"https://api.deezer.com/track/{final_result['id']}",
-                                          headers=headers)
-        parse_json_track = json.loads(response_track.text)
+        parse_json_track = track_request(final_result, headers)
 
         # get all artists in the track
         final_result = get_artists(parse_json_track['contributors'], audio, final_result)
 
         # request data from the album to count the number of tracks and to see if it's from various artists or just one
-        response_album = requests.request("GET", f"https://api.deezer.com/album/{final_result['album_id']}",
-                                          headers=headers)
-        parse_json_album = json.loads(response_album.text)
+        parse_json_album = album_request(final_result, headers)
 
         # get track count, genres, release date and check for various artists
         track_count, album_genres, release_date, various_artists, genres, genres_for_tag, final_feat_album_tag, \
@@ -484,6 +533,8 @@ def tags_scraper_remastered(music_list, directory, automated, headers):
         # edit the .mp3 file
         edit_mp3_file(directory, audio_file, pic_file, final_result, final_feat_album_tag, various_artists,
                       release_date, genres_for_tag)
+
+        # update counter only after a file is edited
         files_edited += 1
 
         # 2s timeout to prevent flooding the api with requests
@@ -496,21 +547,17 @@ def tags_scraper_remastered(music_list, directory, automated, headers):
 def main():
     # Songs Directory
     directory = os.getcwd()
-    music_list = []
 
     # the automation tries to avoid singles, but for songs that are just singles, the album selection is a bit poor
-    automated = False  # automates the process and if various artists are detected, it will apply it to the album artist
+    automated = True  # automates the process and if various artists are detected, it will apply it to the album artist
+    sorting = True  # to sort the songs after tags scraper is finished
     headers = {"Accept-Language": "en-US,en;q=0.5"}  # set the headers to english because of the music genres
 
     # time counter
     start = time.time()
 
     # get every song and append them to music_list
-    for item in os.listdir(directory):
-        if '.mp3' in item:
-            # clear tags
-            item_cleared = clear_song_tags(item, directory)
-            music_list.append(item_cleared)
+    music_list = get_music_list(directory)
 
     if music_list:
         tags_scraper_remastered(music_list, directory, automated, headers)
@@ -519,13 +566,11 @@ def main():
         return 0
 
     # sorting the songs after getting the tags
-    try:
+    if sorting:
         song_sorter()
-    # if it runs into an error, I just want to know which song caused it, so this Exception doesn't require specificity
-    except Exception as err:
-        print(err)
+
     end = time.time()
-    print(f'Total time: {end - start}')
+    print(f'Total time: {end - start}s')
 
 
 if __name__ == '__main__':

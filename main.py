@@ -64,14 +64,16 @@ def sanitise_user_input(audio_file):
     print("ARTIST FOR CHECK: ", artist_for_check.upper())  # convert to uppercase for easier comparisons
     artist_for_url = audio[0].strip().replace(' ', '-').lower()  # converts to lowercase for the url request
     if '&' in artist_for_url:  # if there are more than 2 artists, split them into two and use one for validation
-        artist_for_url = artist_for_url.replace('&', '-')
+        print("ARTIST FOR URL BEFORE SWAP: ", artist_for_url)
+        artist_for_url = artist_for_url.replace('&-', '')
+        print("ARTIST FOR URL: ", artist_for_url)
         artist_for_check = artist_for_check.split('&')
-        artist_for_check = artist_for_check[0]
+        artist_for_check = artist_for_check[0].strip()
     artist_for_url = unicodedata.normalize(
         'NFKD', artist_for_url).encode('ASCII', 'ignore').decode()
     print(artist_for_url, " trying to get data")
     title_for_check = audio[1][:-4]  # removes the .mp3 from the filename
-    print(title_for_check.upper())
+    print("TITLE FOR CHECK: ", title_for_check.upper())
     title_for_url = audio[1][:-4].strip(
         '- ').replace(' ', '-').lower()
     title_for_url = title_for_url.replace('\'', '')
@@ -558,7 +560,7 @@ def main():
     directory = os.getcwd()
 
     # the automation tries to avoid singles, but for songs that are just singles, the album selection is a bit poor
-    automated = True  # automates the process and if various artists are detected, it will apply it to the album artist
+    automated = False  # automates the process and if various artists are detected, it will apply it to the album artist
     sorting = True  # to sort the songs after tags scraper is finished
     headers = {"Accept-Language": "en-US,en;q=0.5"}  # set the headers to english because of the music genres
 

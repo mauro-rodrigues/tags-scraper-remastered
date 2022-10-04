@@ -24,6 +24,7 @@ import unicodedata
 
 
 def get_music_list(directory):
+    # create music list
     music_list = []
 
     for item in os.listdir(directory):
@@ -36,7 +37,9 @@ def get_music_list(directory):
 
 
 def clear_song_tags(audio_file, directory):
+    # read the tags of each file to see if it has already been edited
     tags = TinyTag.get(directory + '/' + audio_file)
+
     if tags.artist and tags.title:
         # if song title has features with (), this removes them from the title so that the search request works properly
         if '(feat.' in tags.title:
@@ -56,24 +59,22 @@ def clear_song_tags(audio_file, directory):
 
 
 def sanitise_user_input(audio_file):
-    # get the artist and title names to put in url
-    print("AUDIO FILE: ", audio_file)
+    print(f"AUDIO FILE: {audio_file}")
     audio = os.path.basename(audio_file).split(' - ', 1)  # splits the filename into 2 (artist - song)
-    print("AUDIO: ", audio)
-    artist_for_check = audio[0].strip()  # artist
-    print("ARTIST FOR CHECK: ", artist_for_check.upper())  # convert to uppercase for easier comparisons
+    print(f"AUDIO: {audio}")
+    artists_for_check = [audio[0].strip()]  # artist
     artist_for_url = audio[0].strip().replace(' ', '-').lower()  # converts to lowercase for the url request
     if '&' in artist_for_url:  # if there are more than 2 artists, split them into two and use one for validation
-        print("ARTIST FOR URL BEFORE SWAP: ", artist_for_url)
+        print(f"ARTIST FOR URL BEFORE SANITISING: {artist_for_url}")
         artist_for_url = artist_for_url.replace('&-', '')
-        print("ARTIST FOR URL: ", artist_for_url)
-        artist_for_check = artist_for_check.split('&')
-        artist_for_check = artist_for_check[0].strip()
+        print(f"ARTIST FOR URL: {artist_for_url}")
+        artists_for_check = artists_for_check[0].split('&')
+    artists_for_check = [artist.strip() for artist in artists_for_check]
+    print(f"ARTISTS FOR CHECK: {artists_for_check}")
     artist_for_url = unicodedata.normalize(
         'NFKD', artist_for_url).encode('ASCII', 'ignore').decode()
-    print(artist_for_url, " trying to get data")
     title_for_check = audio[1][:-4]  # removes the .mp3 from the filename
-    print("TITLE FOR CHECK: ", title_for_check.upper())
+    print(f"TITLE FOR CHECK: {title_for_check.upper()}")
     title_for_url = audio[1][:-4].strip(
         '- ').replace(' ', '-').lower()
     title_for_url = title_for_url.replace('\'', '')
@@ -81,9 +82,9 @@ def sanitise_user_input(audio_file):
         title_for_url = title_for_url.replace('.', '')
     title_for_url = unicodedata.normalize(
         'NFKD', title_for_url).encode('ASCII', 'ignore').decode()
-    print(title_for_url, " trying to get data")
+    print(f"[*] ({artist_for_url}-{title_for_url}) trying to get data...")
 
-    return artist_for_url, title_for_url, artist_for_check, title_for_check, audio
+    return artist_for_url, title_for_url, title_for_check, audio, artists_for_check
 
 
 def search_request(artist_for_url, title_for_url, headers):
@@ -98,29 +99,46 @@ def search_request(artist_for_url, title_for_url, headers):
     return parse_json_search
 
 
-def get_results(data, artist_for_check, title_for_check):
+def get_results(data, title_for_check, artists_for_check):
+    # create results list
     results = []
-    current_result = {}
+
     if data:
-        for n, result in enumerate(data):  # for index and result in the data we just requested
-            if artist_for_check.upper() in result['artist']['name'].upper() \
-                    and title_for_check.upper() in result['title'].upper() \
-                    and 'acoustic' not in result['title'].lower() \
-                    and 'live' not in result['title'].lower() \
-                    and 'bonus' not in result['title'].lower():  # checks for artist, title and filters unwanted results
-                current_result['id'] = result['id']  # song id
-                current_result['artist'] = result['artist']['name']  # artist name
-                current_result['title'] = result['title']  # song name
-                current_result['album_title'] = result['album']['title']  # album name
-                current_result['cover_url_medium'] = result['album']['cover_medium']  # cover 250x250
-                current_result['cover_url_big'] = result['album']['cover_big']  # cover 500x500
-                current_result['cover_url_xl'] = result['album']['cover_xl']  # cover 1000x1000
-                current_result['album_id'] = result['album']['id']  # album id
-                current_result['title_contributors'] = ''  # creates this to add to at a later time
-                results.append(current_result)  # adds all the results to a list so that we can choose the one we want
-                current_result = {}
+        # get number of artists that are not features
+        total_artists = len(artists_for_check)
+        if total_artists == 1:
+            for n, result in enumerate(data):  # for index and result in the data we just requested
+                result_title_upper = result['title'].upper()
+                if artists_for_check[0].upper() in result['artist']['name'].upper() \
+                        and title_for_check.upper() in result_title_upper \
+                        and 'ACOUSTIC' not in result_title_upper \
+                        and 'LIVE' not in result_title_upper \
+                        and 'BONUS' not in result_title_upper:
+                    results.append(assign_results_to_result_list(result))
+        elif total_artists > 1:
+            for n, result in enumerate(data):  # for index and result in the data we just requested
+                result_title_upper = result['title'].upper()
+                for artist in artists_for_check:
+                    if artist.upper() in result['artist']['name'].upper() \
+                            and title_for_check.upper() in result_title_upper \
+                            and 'ACOUSTIC' not in result_title_upper \
+                            and 'LIVE' not in result_title_upper \
+                            and 'BONUS' not in result_title_upper:
+                        results.append(assign_results_to_result_list(result))
+                        break
+        else:
+            return []
 
     return results
+
+
+def assign_results_to_result_list(result):
+    # create dictionary for song tags
+    current_result = {'id': result['id'], 'artist': result['artist']['name'], 'title': result['title'],
+                      'album_title': result['album']['title'], 'cover_url_medium': result['album']['cover_medium'],
+                      'cover_url_big': result['album']['cover_big'], 'cover_url_xl': result['album']['cover_xl'],
+                      'album_id': result['album']['id'], 'title_contributors': ''}
+    return current_result  # adds all the results to a list so that we can choose the one we want
 
 
 def print_search_error(artist_for_check, title_for_check):
@@ -142,7 +160,7 @@ def print_results_and_pick_one(results, automated):
     for n, result in enumerate(results):
         # number of results to be displayed (10)
         if n + 1 < 10:
-            print("VERSION: ", n + 1, result)  # shows the results up to 10 in total so that the user can pick one
+            print(f"VERSION: {n+1} {result}")  # shows the results up to 10 in total so that the user can pick one
             total_songs_for_user_choice += 1
         else:
             break
@@ -208,7 +226,7 @@ def get_artists(data, audio, final_result):
                 if contributor.lower() not in final_result['artist'].lower() \
                         and contributor.lower() not in final_result['title'].lower():
                     final_contributors.append(contributor)
-            print("FINAL CONTRIBUTORS: ", final_contributors)
+            print(f"FINAL CONTRIBUTORS: {final_contributors}")
             if len(final_contributors) == 1:  # if there's only one extra artist
                 if 'feat.' not in final_result['title'].lower():  # check if it's already present in the song name
                     final_result['title_contributors'] = final_result['title'] + \
@@ -221,7 +239,7 @@ def get_artists(data, audio, final_result):
                 for contributor in final_contributors:
                     final_result['title_contributors'] += f'{contributor}' + ' & '  # prepare the string to add
                 final_result['title_contributors'] = final_result['title_contributors'][:-3] + ')'  # add artists
-    print("FINAL RESULT TITLE CONTRIBUTORS: ", final_result['title_contributors'])
+    print(f"FINAL RESULT TITLE CONTRIBUTORS: {final_result['title_contributors']}")
 
     return final_result
 
@@ -268,16 +286,16 @@ def get_album_information(data, automated, title_for_check, final_result):
     if 'feat.' in final_result['album_title']:
         feat_album_tag = final_result['album_title'].replace(')', '(')
         feat_album_tag = feat_album_tag.split('(')
-        print("FINAL_FEAT_ALBUM_TAG_BEFORE_REPLACE: ", feat_album_tag)
+        print(f"FINAL_FEAT_ALBUM_TAG_BEFORE_REPLACE: {feat_album_tag}")
         feat_album_tag_first = feat_album_tag[0]  # this removes the last blank space
         final_feat_album_tag = str(feat_album_tag_first[0:-1] + feat_album_tag.pop())
-        print("FINAL FEAT. ALBUM TAG: ", final_feat_album_tag)
+        print(f"FINAL FEAT. ALBUM TAG: {final_feat_album_tag}")
 
     # get the number of the track on the album
     for n, s in enumerate(album_tracks['data']):
-        print(n + 1, s)  # show the user the track and corresponding number
+        # print(n + 1, s)  # show the user the track and corresponding number
         if title_for_check.upper() in s['title'].upper():  # if it finds the song, use the track number
-            print("FINAL: ", s['title'])
+            print(f"FINAL: {s['title']}")
             final_result['track_number'] = n + 1
             break
     final_result['total_tracks'] = track_count  # add total track count to the object
@@ -298,7 +316,7 @@ def get_album_information(data, automated, title_for_check, final_result):
 
     # format the genres
     length_genres = len(genres)  # get the number of genres
-    print("NUMBER OF GENRES: ", length_genres)
+    print(f"NUMBER OF GENRES: {length_genres}")
     if length_genres > 1:  # if it has more than 1 genre
         for genre in genres:
             genres_for_tag = genres_for_tag + genre + '/'  # put them all together i.e: rock/pop/rap
@@ -318,7 +336,7 @@ def sanitise_album_tag(final_result, directory):
         if character in album_tag:
             album_name_for_cover_art = album_tag.replace(character, '')
 
-    print("ALBUM TAG: ", album_name_for_cover_art)
+    print(f"ALBUM TAG: {album_name_for_cover_art}")
 
     if final_result['cover_url_xl']:  # check if the album has a 1000x1000 cover art picture
         cover_image_fetcher(final_result['cover_url_xl'], album_name_for_cover_art)
@@ -334,7 +352,7 @@ def sanitise_album_tag(final_result, directory):
     for character in special_characters:
         if character in pic_file and character != '/':
             pic_file = pic_file.replace(character, '')
-    print(pic_file, " AFTER REPLACE")
+    print(f"{pic_file} AFTER REPLACE")
 
     return pic_file
 
@@ -357,22 +375,22 @@ def cover_image_fetcher(album_cover_url, album_tag):
 
 
 def print_final_data(final_result, various_artists, genres, genres_for_tag, release_date):
-    print("ALBUM_ID: ", final_result['album_id'])
-    print("TRACK_ID: ", final_result['id'])
-    print("TRACK: ", final_result['title'])
-    print("ARTIST: ", final_result['artist'])
-    print("ALBUM: ", final_result['album_title'])
+    print(f"ALBUM_ID: {final_result['album_id']}")
+    print(f"TRACK_ID: {final_result['id']}")
+    print(f"TRACK: {final_result['title']}")
+    print(f"ARTIST: {final_result['artist']}")
+    print(f"ALBUM: {final_result['album_title']}")
     if not various_artists:
-        print("ALBUM ARTIST: ", final_result['artist'])
+        print(f"ALBUM ARTIST: {final_result['artist']}")
     else:
-        print("ALBUM ARTIST: ", 'Various Artists')
-    print("TRACK NUMBER: ", final_result['track_number'])
-    print("TRACKS: ", final_result['total_tracks'])
-    print("GENRES: ", genres)
-    print("GENRES FOR TAG: ", genres_for_tag)
-    print("COVER_URL_XL: ", final_result['cover_url_xl'])
-    print("RELEASE DATE: ", release_date)
-    print("DISC_NUMBER: ", '1/1')
+        print("ALBUM ARTIST: Various Artists")
+    print(f"TRACK NUMBER: {final_result['track_number']}")
+    print(f"TRACKS: {final_result['total_tracks']}")
+    print(f"GENRES: {genres}")
+    print(f"GENRES FOR TAG: {genres_for_tag}")
+    print(f"COVER_URL_XL: {final_result['cover_url_xl']}")
+    print(f"RELEASE DATE: {release_date}")
+    print("DISC_NUMBER: 1/1")
 
 
 def edit_mp3_file(directory, audio_file, pic_file, final_result, final_feat_album_tag, various_artists, release_date,
@@ -415,11 +433,11 @@ def edit_mp3_file(directory, audio_file, pic_file, final_result, final_feat_albu
     if final_result['title_contributors']:  # check if there were featured artists to update the success message
         os.rename(directory + '/' + audio_file,
                   directory + '/' + track_number_for_name + ' ' + final_result['title_contributors'] + '.mp3')
-        print('Success!', final_result['artist'], " - ", final_result['title_contributors'])
+        print(f"Success! {final_result['artist']} - {final_result['title_contributors']}")
     else:
         os.rename(directory + '/' + audio_file,
                   directory + '/' + track_number_for_name + ' ' + final_result['title'] + '.mp3')
-        print('Success!', final_result['artist'], " - ", final_result['title'])
+        print(f"Success! {final_result['artist']} - {final_result['title']}")
 
 
 def album_folder_creator(current_directory, album):
@@ -507,16 +525,17 @@ def tags_scraper_remastered(music_list, directory, automated, headers):
 
     for audio_file in music_list:
         # sanitise user input
-        artist_for_url, title_for_url, artist_for_check, title_for_check, audio = sanitise_user_input(audio_file)
+        artist_for_url, title_for_url, title_for_check, audio, multiple_artists \
+            = sanitise_user_input(audio_file)
 
         # search for song
         parse_json_search = search_request(artist_for_url, title_for_url, headers)
 
         # get the results and append them into a list
-        results = get_results(parse_json_search['data'], artist_for_check, title_for_check)
+        results = get_results(parse_json_search['data'], title_for_check, multiple_artists)
 
         if not results:
-            print_search_error(artist_for_check, title_for_check)
+            print_search_error(audio[0], title_for_check)
             continue
 
         # print the results and pick one, either via automation or user choice
@@ -560,7 +579,7 @@ def main():
     directory = os.getcwd()
 
     # the automation tries to avoid singles, but for songs that are just singles, the album selection is a bit poor
-    automated = False  # automates the process and if various artists are detected, it will apply it to the album artist
+    automated = True  # automates the process and if various artists are detected, it will apply it to the album artist
     sorting = True  # to sort the songs after tags scraper is finished
     headers = {"Accept-Language": "en-US,en;q=0.5"}  # set the headers to english because of the music genres
 

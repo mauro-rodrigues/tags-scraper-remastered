@@ -104,30 +104,16 @@ def get_results(data, title_for_check, artists_for_check):
     results = []
 
     if data:
-        # get number of artists that are not features
-        total_artists = len(artists_for_check)
-        if total_artists == 1:
-            for n, result in enumerate(data):  # for index and result in the data we just requested
+        for n, result in enumerate(data):  # for index and result in the data we just requested
+            for artist in artists_for_check:
                 result_title_upper = result['title'].upper()
-                if artists_for_check[0].upper() in result['artist']['name'].upper() \
+                if artist.upper() in result['artist']['name'].upper() \
                         and title_for_check.upper() in result_title_upper \
                         and 'ACOUSTIC' not in result_title_upper \
                         and 'LIVE' not in result_title_upper \
                         and 'BONUS' not in result_title_upper:
                     results.append(assign_results_to_result_list(result))
-        elif total_artists > 1:
-            for n, result in enumerate(data):  # for index and result in the data we just requested
-                result_title_upper = result['title'].upper()
-                for artist in artists_for_check:
-                    if artist.upper() in result['artist']['name'].upper() \
-                            and title_for_check.upper() in result_title_upper \
-                            and 'ACOUSTIC' not in result_title_upper \
-                            and 'LIVE' not in result_title_upper \
-                            and 'BONUS' not in result_title_upper:
-                        results.append(assign_results_to_result_list(result))
-                        break
-        else:
-            return []
+                    break  # breaks since we just need one of them to be found
 
     return results
 

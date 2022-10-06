@@ -132,7 +132,41 @@ def print_search_error(artist_for_check, title_for_check):
     print("Check for any spelling errors and if the right syntax is being used.")
 
 
-def print_results_and_pick_one(results, automated):
+def avoid_singles_automatically(number_results, results, final_result, headers):
+    if number_results > 1:
+        if results[0]['title'] != results[0]['album_title']:
+            if 'GREATEST HITS' in results[0]['album_title'].upper():
+                final_result = results[1]
+            else:
+                final_result = results[0]
+        elif results[1]['title'] == results[1]['album_title'] and \
+                results[0]['title'] == results[0]['album_title']:
+            final_result = results[1]
+        else:
+            album_contributors = []
+            genres = []
+            check_album = album_request(results[1], headers)
+            for contributor in check_album['contributors']:
+                album_contributors.append(contributor['name'])  # add the album artists to a list
+            for genre in check_album['genres']['data']:
+                genres.append(genre['name'])
+            if 'Various Artists' in album_contributors or \
+                    'Film Scores' in genres or \
+                    'Films/Games' in genres or \
+                    'REMIX' in results[1]['title'].upper() or \
+                    'REMIX' in results[1]['album_title'].upper():
+                final_result = results[0]
+            else:
+                final_result = results[1]
+            album_contributors.clear()
+            genres.clear()
+    elif number_results == 1:
+        final_result = results[0]
+
+    return final_result
+
+
+def print_results_and_pick_one(results, automated, avoid_singles, headers):
     # calculates the number of results for later
     number_results = len(results)
 
@@ -152,15 +186,14 @@ def print_results_and_pick_one(results, automated):
             break
 
     if automated:
-        if number_results > 1:
-            if results[0]['title'] == results[0]['album_title']:
+        if avoid_singles:
+            final_result = avoid_singles_automatically(number_results, results, final_result, headers)
+        elif not avoid_singles:
+            if number_results > 1 and results[0]['title'] != results[0]['album_title'] and \
+                    'GREATEST HITS' in results[0]['album_title'].upper():
                 final_result = results[1]
-            elif results[1]['title'] == results[1]['album_title']:
-                final_result = results[0]
             else:
                 final_result = results[0]
-        elif number_results == 1:
-            final_result = results[0]
 
     elif not automated:
         if number_results > 1:  # if there are multiple results, let the user pick one
@@ -504,7 +537,7 @@ def song_sorter():
         print(err)
 
 
-def tags_scraper_remastered(music_list, directory, automated, headers):
+def tags_scraper_remastered(music_list, directory, automated, avoid_singles, headers):
     # counter for total files and files edited
     files_edited = 0
     total_files = len(music_list)
@@ -525,7 +558,7 @@ def tags_scraper_remastered(music_list, directory, automated, headers):
             continue
 
         # print the results and pick one, either via automation or user choice
-        final_result = print_results_and_pick_one(results, automated)
+        final_result = print_results_and_pick_one(results, automated, avoid_singles, headers)
 
         # requests the track data to check the artists (contributors in Deezer's API)
         parse_json_track = track_request(final_result, headers)
@@ -566,6 +599,7 @@ def main():
 
     # the automation tries to avoid singles, but for songs that are just singles, the album selection is a bit poor
     automated = True  # automates the process and if various artists are detected, it will apply it to the album artist
+    avoid_singles = True  # if you want the automation to try to avoid singles (some songs are only available as such)
     sorting = True  # to sort the songs after tags scraper is finished
     headers = {"Accept-Language": "en-US,en;q=0.5"}  # set the headers to english because of the music genres
 
@@ -576,7 +610,7 @@ def main():
     music_list = get_music_list(directory)
 
     if music_list:
-        tags_scraper_remastered(music_list, directory, automated, headers)
+        tags_scraper_remastered(music_list, directory, automated, avoid_singles, headers)
     else:
         print('No songs found.')
         return 0

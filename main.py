@@ -6,7 +6,7 @@ import shutil
 import time
 from tinytag import TinyTag
 from mutagen.mp3 import MP3
-from mutagen.id3 import ID3, APIC, TIT2, TPE1, TRCK, TALB, TYER, TCON, TPE2, TPA
+from mutagen.id3 import ID3, APIC, TIT2, TPE1, TRCK, TALB, TYER, TCON, TPE2, TPA, TBPM
 
 """ Normalise (normalize) unicode data in Python to remove umlauts, accents etc. """
 import unicodedata
@@ -20,6 +20,7 @@ import unicodedata
 # TALB: Album
 # USLT: Lyrics
 # TCON: Genre
+# TBPM: BPM (Beats Per Minute)
 # TPA: Disc Number
 
 
@@ -124,6 +125,7 @@ def assign_results_to_result_list(result):
                       'album_title': result['album']['title'], 'cover_url_medium': result['album']['cover_medium'],
                       'cover_url_big': result['album']['cover_big'], 'cover_url_xl': result['album']['cover_xl'],
                       'album_id': result['album']['id'], 'title_contributors': ''}
+
     return current_result  # adds all the results to a list so that we can choose the one we want
 
 
@@ -225,6 +227,12 @@ def track_request(final_result, headers):
     parse_json_track = json.loads(response_track.text)
 
     return parse_json_track
+
+
+def track_bpm(data, final_result):
+    final_result['bpm'] = str(data['bpm']) if 'bpm' in data.keys() and data['bpm'] != 0 else 'N/A'
+
+    return final_result
 
 
 def get_artists(data, audio, final_result):
@@ -409,6 +417,7 @@ def print_final_data(final_result, various_artists, genres, genres_for_tag, rele
     print(f"GENRES FOR TAG: {genres_for_tag}")
     print(f"COVER_URL_XL: {final_result['cover_url_xl']}")
     print(f"RELEASE DATE: {release_date}")
+    print(f"BPM: {final_result['bpm']}")
     print("DISC_NUMBER: 1/1")
 
 
@@ -448,6 +457,7 @@ def edit_mp3_file(directory, audio_file, pic_file, final_result, final_feat_albu
         track_number_for_name = '0' + str(final_result['track_number'])  # prepend a 0 for the filename (6 -> 06)
     else:
         track_number_for_name = str(final_result['track_number'])
+    file.tags.add(TBPM(encoding=3, text=final_result['bpm']))
     file.save(v2_version=3)  # save the tags
     if final_result['title_contributors']:  # check if there were featured artists to update the success message
         os.rename(directory + '/' + audio_file,
@@ -563,6 +573,9 @@ def tags_scraper_remastered(music_list, directory, automated, avoid_singles, hea
         # requests the track data to check the artists (contributors in Deezer's API)
         parse_json_track = track_request(final_result, headers)
 
+        # get the BPM (beats per minute)
+        final_result = track_bpm(parse_json_track, final_result)
+
         # get all artists in the track
         final_result = get_artists(parse_json_track['contributors'], audio, final_result)
 
@@ -598,7 +611,7 @@ def main():
     directory = os.getcwd()
 
     # the automation tries to avoid singles, but for songs that are just singles, the album selection is a bit poor
-    automated = True  # automates the process and if various artists are detected, it will apply it to the album artist
+    automated = False  # automates the process and if various artists are detected, it will apply it to the album artist
     avoid_singles = True  # if you want the automation to try to avoid singles (some songs are only available as such)
     sorting = True  # to sort the songs after tags scraper is finished
     headers = {"Accept-Language": "en-US,en;q=0.5"}  # set the headers to english because of the music genres
